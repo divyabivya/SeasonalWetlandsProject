@@ -2,11 +2,6 @@ var Region = ee.FeatureCollection('projects/wetlands-445617/assets/RegionWithDat
 Map.addLayer(Region,{}, 'Region With Data');
 //adding our region of interest, which is where our training and testing data is from
 
-var Tester = ee.FeatureCollection('projects/wetlands-445617/assets/RegionWithoutData');
-Map.addLayer(Tester, {}, 'Region Without Data');
-//adding our region of interest without data
-//this will help test our model's ability to predict wetlands without any training or testing data in the image
-
 var testingSet= ee.FeatureCollection('projects/wetlands-445617/assets/TestingDatasetFinal');
 Map.addLayer(testingSet, {},'Testing Dataset');
 //adding our testing dataset to the map to display our data
@@ -51,23 +46,15 @@ function maskCloudAndShadows(image) {
 
 
 // importing the Sentinel-2 Satellite Imagery dataset 
-//creating two images:
-//display and displaytester variables are to display the Sentinel-2 Imagery on the map
-//the sentinel2SRCollection variable is the image our model will be given to classify wetlands from
+//the display variable is used to display the Sentinel-2 Imagery on the map
 
 var display = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-.filterDate('2022-01-01', '2022-12-31') //filtering to the year 2022, spring [this season had the highest classification accuracy!!]
+.filterDate('2022-03-20', '2022-06-20') //filtering to the year 2022, spring [this season had the highest classification accuracy!!]
 .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)) //filtering for low cloud coverage (<20%)
 .map(maskCloudAndShadows); //applying SCL masking
 display = display.filterBounds(Region);
 display = display.median(); //taking the median image so we have a single image
 
-var displaytester = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-.filterDate('2022-01-01', '2022-12-31') //filtering to the year 2022, spring [this season had the highest classification accuracy!!]
-.filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)) //filtering for low cloud coverage (<20%)
-.map(maskCloudAndShadows); //applying SCL masking
-displaytester = displaytester.filterBounds(Tester);
-displaytester = displaytester.median(); //taking the median image so we have a single image
 
 //visualization parameters for the Sentinel-2 Imagery on our map
 var vizParams = {
@@ -78,8 +65,7 @@ var vizParams = {
   
 };
 
-Map.addLayer(display, vizParams, "Sentinel-2 Satellite Imagery" );//displaying sentinel 2 imagery of the first region
-Map.addLayer(displaytester, vizParams, "Sentinel-2 Satellite Imagery" );//displaying sentinel 2 imagery of the second region
+Map.addLayer(display, vizParams, "Sentinel-2 Satellite Imagery" );//displaying sentinel 2 imagery of our region
 Map.centerObject(Region, 5); //setting the zoom setting of the map
 
 //creating the image which our model will be given to predict wetlands from 
@@ -234,69 +220,4 @@ print('Class Distribution:', trainingDataset.aggregate_histogram('class'));
 
 print('Precision:', confusionMatrix.consumersAccuracy()); //percentage of ml model's predictions that were correct
 print('Recall:', confusionMatrix.producersAccuracy()); //out of all the pixels, how many did ml model classify correctly?
-
-
-
-//now, we will test the model by making it classify an image without any previous testing/training data on it. 
-//repeating all previous steps, but now just giving the model the image to classify.
-
-
-//creating a satellite image for our model to classify without any training data on it
-var testerimg = sentinel2SRCollection.filterBounds(Tester); 
-testerimg = testerimg.median();
-//creating the satellite image
-//filtering to the region of interest
-//taking the median image to reduce the noise and get the best image
-
-//normalizing elevation dataset process
-elevationStats = elevationDataset.reduceRegion({
-  reducer: ee.Reducer.minMax(),
-  geometry: Tester, 
-  scale: 30,
-  bestEffort: true
-});
-
-// extracting min and max values as ee.Number
-elevationMin = ee.Number(elevationStats.get('elevation_min'));
-elevationMax = ee.Number(elevationStats.get('elevation_max'));
-
-// normalizing the elevation using an expression 
-elevationNormalized = elevationDataset.expression(
-  '((elevation - elevation_min) / (elevation_max - elevation_min))', {
-    'elevation': elevationDataset,
-    'elevation_min': elevationMin,
-    'elevation_max': elevationMax
-  }
-).rename('elevation_normalized');
-
-//creating a texture map of our new region of interest to help our model 
-texture = testerimg.select('B8').reduceNeighborhood({
-  reducer: ee.Reducer.stdDev(),
-  kernel: ee.Kernel.square(25)  
-}).rename('Texture');
-
-
-// computing ndvi of our image 
-ndvi = testerimg.normalizedDifference(['B8', 'B4']).rename('NDVI');
-
-//computing ndwi of our image 
-ndwi = testerimg.normalizedDifference(['B3', 'B8']).rename('NDWI');
-
-
-
-//computing ndmi of our image
-ndmi = testerimg.normalizedDifference(['B8', 'B11']).rename('NDMI');
-
-combinedImage = testerimg
-  .select(['B2', 'B3', 'B4', 'B8', 'B11', 'B12'])
-  .addBands([ndvi, elevationNormalized, ndwi, ndmi, texture]); 
-  //adding the bands to our image needed by the model
-  
-classifiedImage = combinedImage.classify(landCoverClassifier);
-//classifying the image using our classifying model
-
-wetlandsClassified = classifiedImage.eq(0).selfMask(); 
-//if image is equal to 0 -> wetland class, it will set that pixel = to 1, and the others to 0!
-//then the self mask will make all pixels with the value of 0 transparent
-Map.addLayer(wetlandsClassified, {palette: 'orange'}, 'Wetlands Predicted, no training data on image [orange]');
 
