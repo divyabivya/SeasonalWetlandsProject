@@ -148,7 +148,6 @@ testingDataset = testingDataset.filter(
 //random forest is the best option because of its ability to handle large datasets with numerous features
 var landCoverClassifier = ee.Classifier.smileRandomForest({
   numberOfTrees: 150, //# of decision trees
-  // 150 is the most optimal! tried and testing 
   variablesPerSplit: 3 //# of variables considered at each split 
 
 });
