@@ -91,7 +91,7 @@ Map.addLayer(wetlands, {
 //creating a texture band which will help our model recognize wetlands
 var texture = dataset.select('B8').reduceNeighborhood({
   reducer: ee.Reducer.stdDev(), //using standard deviation 
-  kernel: ee.Kernel.square(25)  //25 is the most optimal number //tried and tested!
+  kernel: ee.Kernel.square(25)  
 }).rename('Texture'); //comparing the variance of each pixel within the 25x25 grid
 
 //computing indices to help our model recognize wetlands
